@@ -39,10 +39,20 @@ onValue(dataRef, (snapshot) => {
       window._lastSaved = json;
       // Deep merge — не заменяем объект, а обновляем поля внутри него
       const s = window.state;
-      if(data.medData) Object.assign(s.medData, data.medData);
+      if(data.medData){
+        ['doctors','nurses','juniors','universal'].forEach(grp=>{
+          if(data.medData[grp]){
+            Object.keys(data.medData[grp]).forEach(sub=>{
+              s.medData[grp][sub] = data.medData[grp][sub] || [];
+            });
+          }
+        });
+      }
       if(data.cleaning) s.cleaning = data.cleaning;
       if(data.other102) s.other102 = data.other102;
-      if(data.s202) Object.assign(s.s202, data.s202);
+      if(data.s202){
+        Object.keys(data.s202).forEach(grp=>{ s.s202[grp] = data.s202[grp] || []; });
+      }
       if(data.schedule) Object.assign(s.schedule, data.schedule);
       if(data.contacts) s.contacts = data.contacts;
       if(data.textCards) s.textCards = data.textCards;
@@ -325,8 +335,8 @@ onValue(dataRef, (snapshot) => {
       <div class="sidebar">
         <div class="sidebar-inner">
           <h4>Персонал</h4>
-          <a class="sidebar-link active" onclick="showMedGroup('doctors')" id="sl-doctors">👨‍⚕️ Врачебный</a>
-          <a class="sidebar-link" onclick="showMedGroup('nurses')" id="sl-nurses">👩‍⚕️ Средний</a>
+          <a class="sidebar-link active" onclick="showMedGroup('doctors')" id="sl-doctors">⚕️ Врачебный</a>
+          <a class="sidebar-link" onclick="showMedGroup('nurses')" id="sl-nurses">🩺 Средний</a>
           <a class="sidebar-link" onclick="showMedGroup('juniors')" id="sl-juniors">🧹 Младший</a>
           <a class="sidebar-link" onclick="showMedGroup('universal')" id="sl-universal">👕 Универсальная</a>
         </div>
@@ -743,7 +753,7 @@ function saveMedIssue(group, sub, idx){
   const qty = parseInt(document.getElementById('is-qty').value)||1;
   const it = state.medData[group][sub][idx];
   const issued = (it.issues||[]).reduce((s,x)=>s+Number(x.qty),0);
-  if(issued+qty > it.qty) return alert('Недостаточно остатка!');
+  if(it.qty > 0 && issued+qty > it.qty) return alert('Недостаточно остатка! Осталось: '+(it.qty-issued));
   if(!it.issues) it.issues=[];
   it.issues.push({fio, role:document.getElementById('is-role').value.trim(), qty, comment:document.getElementById('is-comment').value.trim()});
   closeModal(); saveToFirebase(); renderMedGroup(group);
@@ -915,7 +925,7 @@ function saveIssueSimple(stateKey, containerId, idx, groupKey){
   const qty = parseInt(document.getElementById('is-qty').value)||1;
   const it = getArr(stateKey, groupKey)[idx];
   const issued = (it.issues||[]).reduce((s,x)=>s+Number(x.qty),0);
-  if(issued+qty > it.qty) return alert('Недостаточно остатка!');
+  if(it.qty > 0 && issued+qty > it.qty) return alert('Недостаточно остатка! Осталось: '+(it.qty-issued));
   if(!it.issues) it.issues=[];
   it.issues.push({fio, role:document.getElementById('is-role').value.trim(), qty, comment:document.getElementById('is-comment').value.trim()});
   closeModal(); saveToFirebase(); renderSimpleTable(containerId, stateKey, groupKey);
