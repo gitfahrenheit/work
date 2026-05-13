@@ -49,7 +49,11 @@ onValue(dataRef, (snapshot) => {
   }
   if (!window._snapshotReady) {
     window._snapshotReady = true;
-    if (window._waitingForData) window._finishInit();
+    // Данные уже загружены — если пользователь уже ввёл пароль, открываем сразу
+    if (window._waitingForData) {
+      window._waitingForData = false;
+      window._finishInit();
+    }
   }
 });
 </script>
@@ -500,6 +504,13 @@ function checkPw(){
     } else {
       window._waitingForData = true;
       document.getElementById('loading-overlay').style.display='flex';
+      // Если Firebase не ответил за 3 секунды — открываем сразу
+      setTimeout(()=>{
+        if(window._waitingForData){
+          window._waitingForData = false;
+          _finishInit();
+        }
+      }, 3000);
     }
   } else {
     document.getElementById('pw-error').style.display='block';
