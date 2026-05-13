@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Цифровой помощник сестры-хозяйки — КДЦ для детей</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Nunito:wght@400;500;600;700&family=Montserrat:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDMktzHqC_3BJ9tHgvFYYf31njugCNzUHE",
+  authDomain: "helper-70109.firebaseapp.com",
+  projectId: "helper-70109",
+  storageBucket: "helper-70109.firebasestorage.app",
+  messagingSenderId: "706460274298",
+  appId: "1:706460274298:web:c121744caad3bc142535c3"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const DOC_REF = doc(db, "app_data", "main");
+
+// Expose to global scope for use in non-module script
+window._db = db;
+window._docRef = DOC_REF;
+window._setDoc = setDoc;
+window._onSnapshot = onSnapshot;
+window._dbReady = true;
+
+// Start listening for real-time updates
+onSnapshot(DOC_REF, (snap) => {
+  if (snap.exists()) {
+    const data = snap.data();
+    // Only update if data differs (avoid re-render loop from our own saves)
+    if (JSON.stringify(data) !== window._lastSaved) {
+      // Merge into state, keeping navigation state
+      const nav = {
+        currentMedGroup: window.state.currentMedGroup,
+        current202Group: window.state.current202Group,
+        pageStack: window.state.pageStack,
+        currentPage: window.state.currentPage
+      };
+      Object.assign(window.state, data, nav);
+      window._lastSaved = JSON.stringify(data);
+      if (window._appUnlocked) window.refreshAllRendered();
+    }
+  }
+  if (!window._snapshotReady) {
+    window._snapshotReady = true;
+    // If app is already waiting for data (user already logged in)
+    if (window._waitingForData) window._finishInit();
+  }
+});
+</script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#f4f7fb;
+    --surface:#ffffff;
+    --surface2:#f8fafd;
+    --surface3:#eef3f9;
+    --border:#dce8f4;
+    --border2:#c5d9ee;
+    --accent:#5b9fd4;
+    --accent2:#3d7fb8;
+    --accent-light:#e8f3fc;
+    --accent-mid:#d0e8f7;
+    --text:#1e3548;
+    --text2:#4f6d84;
+    --text3:#8fafc4;
+    --green:#2e9e6a;--green-bg:#e6f7f0;
+    --red:#c0392b;--red-bg:#fdecea;
+    --shadow:0 1px 6px rgba(80,130,180,0.08),0 2px 16px rgba(80,130,180,0.06);
+    --shadow2:0 4px 20px rgba(80,130,180,0.13);
+    --shadow3:0 8px 32px rgba(80,130,180,0.16);
+    --radius:16px;--radius2:12px;--radius3:9px;
+    --font:'Nunito',sans-serif;
+  }
+  body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+
+  /* ===== PASSWORD ===== */
+  #pw-overlay{position:fixed;inset:0;background:linear-gradient(145deg,#ddeef8 0%,#eaf4fc 60%,#f2f8fd 100%);display:flex;align-items:center;justify-content:center;z-index:9999}
+  .pw-card{background:var(--surface);border-radius:24px;box-shadow:0 12px 48px rgba(80,130,190,0.18);padding:52px 48px;min-width:380px;text-align:center}
+  .pw-card h1{font-family:'Montserrat',sans-serif;font-size:20px;font-weight:700;color:var(--text);margin-bottom:5px;line-height:1.3}
+  .pw-card .pw-subtitle{color:var(--text2);font-size:13px;margin-bottom:4px;font-weight:500}
+  .pw-card .pw-hint{color:var(--text3);font-size:13px;margin-bottom:32px}
+  .pw-card input{width:100%;padding:13px 16px;border:2px solid var(--border2);border-radius:var(--radius3);font-family:var(--font);font-size:15px;color:var(--text);outline:none;transition:.2s;background:var(--surface2);letter-spacing:.5px}
+  .pw-card input:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(91,159,212,0.12)}
+  .pw-card button{width:100%;margin-top:14px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius3);font-family:var(--font);font-size:15px;font-weight:700;cursor:pointer;transition:.2s;letter-spacing:.3px}
+  .pw-card button:hover{background:var(--accent2);box-shadow:0 4px 16px rgba(80,130,190,0.25)}
+  .pw-error{color:var(--red);font-size:13px;margin-top:10px;display:none}
+  .logo-icon{width:64px;height:64px;background:linear-gradient(135deg,var(--accent-light),var(--accent-mid));border-radius:18px;display:flex;align-items:center;justify-content:center;margin:0 auto 22px;font-size:32px;box-shadow:0 4px 12px rgba(91,159,212,0.2)}
+
+  /* ===== LAYOUT ===== */
+  #app{display:none}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 36px;height:68px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:100;box-shadow:0 1px 8px rgba(80,130,180,0.08)}
+  .logo{display:flex;flex-direction:column;gap:1px;cursor:pointer;text-decoration:none}
+  .logo-title{font-family:'Montserrat',sans-serif;font-size:14px;font-weight:700;color:var(--accent2);line-height:1.2;letter-spacing:-.1px}
+  .logo-sub{font-size:11px;font-weight:500;color:var(--text3);letter-spacing:.2px}
+  .header-divider{width:1px;height:32px;background:var(--border);flex-shrink:0}
+  .breadcrumb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)}
+  .breadcrumb span{cursor:pointer;transition:.15s;font-weight:500}.breadcrumb span:hover{color:var(--accent)}
+  .breadcrumb .sep{color:var(--text3);font-weight:400}
+  .back-btn{margin-left:auto;padding:8px 20px;background:var(--accent-light);color:var(--accent2);border:1.5px solid var(--accent-mid);border-radius:var(--radius3);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:.2s;display:none;gap:6px;align-items:center}
+  .back-btn:hover{background:var(--accent-mid);border-color:var(--border2)}
+
+  /* ===== PAGES ===== */
+  .page{display:none;padding:36px 40px}
+  .page.active{display:block}
+
+  /* ===== HOME ===== */
+  .home-wrap{max-width:960px;margin:0 auto;padding-top:24px}
+  .home-greeting{margin-bottom:36px}
+  .home-greeting h1{font-family:'Montserrat',sans-serif;font-size:24px;font-weight:700;color:var(--text);margin-bottom:6px}
+  .home-greeting p{font-size:15px;color:var(--text2)}
+  .home-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .home-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow2);padding:36px 28px;text-align:center;cursor:pointer;transition:.25s;border:1.5px solid var(--border)}
+  .home-card:hover{transform:translateY(-5px);border-color:var(--accent);box-shadow:var(--shadow3)}
+  .home-card-icon{width:68px;height:68px;border-radius:18px;background:linear-gradient(135deg,var(--accent-light),var(--accent-mid));margin:0 auto 20px;display:flex;align-items:center;justify-content:center;font-size:32px}
+  .home-card h2{font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px;font-family:'Montserrat',sans-serif}
+  .home-card p{font-size:13px;color:var(--text2);line-height:1.5}
+
+  /* ===== SECTION PAGE ===== */
+  .section-header{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+  .section-header h1{font-family:'Montserrat',sans-serif;font-size:22px;font-weight:700;color:var(--text)}
+  .section-header p{color:var(--text2);font-size:14px;margin-top:5px}
+  .group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;max-width:920px}
+  .group-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:28px 24px;cursor:pointer;transition:.22s;border:1.5px solid var(--border)}
+  .group-card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:var(--shadow2)}
+  .group-card .gc-icon{font-size:28px;margin-bottom:14px}
+  .group-card h3{font-size:15px;font-weight:700;color:var(--text);font-family:'Montserrat',sans-serif}
+  .group-card p{font-size:13px;color:var(--text2);margin-top:5px;line-height:1.4}
+
+  /* ===== SIDEBAR ===== */
+  .with-sidebar{display:flex;gap:24px}
+  .sidebar{width:210px;flex-shrink:0}
+  .sidebar-inner{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 0;position:sticky;top:88px;border:1px solid var(--border)}
+  .sidebar-inner h4{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;padding:0 20px 12px}
+  .sidebar-link{display:block;padding:10px 20px;font-size:14px;color:var(--text2);cursor:pointer;transition:.15s;border-left:3px solid transparent;text-decoration:none;font-weight:500}
+  .sidebar-link:hover{color:var(--accent);background:var(--accent-light);border-left-color:var(--accent)}
+  .sidebar-link.active{color:var(--accent2);background:var(--accent-light);border-left-color:var(--accent2);font-weight:700}
+  .main-content{flex:1;min-width:0}
+
+  /* ===== CATEGORY SECTION ===== */
+  .cat-section{margin-bottom:40px}
+  .cat-section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding:14px 18px;background:var(--surface2);border-radius:var(--radius2);border:1px solid var(--border)}
+  .cat-section-header h2{font-size:15px;font-weight:700;color:var(--text);font-family:'Montserrat',sans-serif}
+  .add-btn{padding:9px 20px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius3);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:6px;letter-spacing:.2px}
+  .add-btn:hover{background:var(--accent2);box-shadow:0 3px 10px rgba(80,130,190,0.2)}
+  .add-btn.secondary{background:var(--surface);color:var(--accent2);border:1.5px solid var(--accent-mid)}
+  .add-btn.secondary:hover{background:var(--accent-light)}
+
+  /* ===== TABLE ===== */
+  .table-wrap{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  thead tr{background:var(--surface3)}
+  th{padding:12px 16px;text-align:left;font-weight:700;color:var(--text2);font-size:12px;text-transform:uppercase;letter-spacing:.7px;border-bottom:1.5px solid var(--border)}
+  td{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top;line-height:1.55}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#f6fafd}
+  .remain-col{font-weight:700;color:var(--accent2);font-size:15px}
+  .tbl-actions{display:flex;gap:6px;align-items:center}
+  .icon-btn{width:30px;height:30px;border:none;border-radius:7px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;transition:.15s}
+  .icon-btn.edit{background:#eaf3fc;color:#3d7fb8}.icon-btn.edit:hover{background:#d0e8f7}
+  .icon-btn.del{background:var(--red-bg);color:var(--red)}.icon-btn.del:hover{background:#fbcccc}
+  .icon-btn.issue{background:var(--green-bg);color:var(--green)}.icon-btn.issue:hover{background:#c4eddc}
+
+  /* ===== MODAL ===== */
+  .modal-bg{position:fixed;inset:0;background:rgba(20,55,85,.35);display:none;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(2px)}
+  .modal-bg.open{display:flex}
+  .modal-card{background:var(--surface);border-radius:22px;box-shadow:0 16px 56px rgba(40,100,170,.2);padding:40px 36px;min-width:400px;max-width:520px;width:100%;position:relative;animation:slideUp .22s ease}
+  @keyframes slideUp{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .modal-card h2{font-size:18px;font-weight:700;color:var(--text);margin-bottom:5px;font-family:'Montserrat',sans-serif}
+  .modal-card>p{font-size:13px;color:var(--text2);margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+  .form-group{margin-bottom:16px}
+  .form-group label{display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px}
+  .form-group input,.form-group select,.form-group textarea{width:100%;padding:11px 14px;border:1.5px solid var(--border2);border-radius:var(--radius3);font-family:var(--font);font-size:14px;color:var(--text);outline:none;transition:.2s;background:var(--surface2);line-height:1.5}
+  .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(91,159,212,0.1)}
+  .form-group textarea{resize:vertical;min-height:76px}
+  .modal-actions{display:flex;gap:10px;margin-top:24px;justify-content:flex-end}
+  .modal-cancel{padding:10px 22px;background:var(--surface2);color:var(--text2);border:1.5px solid var(--border2);border-radius:var(--radius3);font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:.2s}
+  .modal-cancel:hover{background:var(--surface3)}
+  .modal-submit{padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius3);font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;transition:.2s}
+  .modal-submit:hover{background:var(--accent2)}
+  .close-modal{position:absolute;top:16px;right:18px;background:var(--surface3);border:none;width:28px;height:28px;border-radius:50%;font-size:16px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s}
+  .close-modal:hover{background:var(--border2);color:var(--text)}
+
+  /* ===== SCHEDULE ===== */
+  .schedule-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  .day-col{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border)}
+  .day-col-header{background:linear-gradient(135deg,var(--accent-light),var(--accent-mid));padding:11px 14px;font-size:12px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.6px}
+  .day-tasks{padding:10px;min-height:130px}
+  .task-item{background:var(--surface2);border-radius:9px;padding:9px 11px;margin-bottom:8px;font-size:13px;border-left:3px solid var(--accent);display:flex;justify-content:space-between;align-items:flex-start;gap:6px;line-height:1.45}
+  .task-item .task-text{flex:1;color:var(--text)}
+  .task-actions{display:flex;gap:4px;flex-shrink:0}
+  .add-task-btn{width:100%;padding:8px;background:none;border:1.5px dashed var(--border2);border-radius:9px;font-family:var(--font);font-size:12px;color:var(--text3);cursor:pointer;transition:.2s;font-weight:600}
+  .add-task-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+
+  /* ===== CONTACTS ===== */
+  .contact-item{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border)}
+  .contact-item:last-child{border-bottom:none}
+  .contact-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent-light),var(--accent-mid));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--accent2);flex-shrink:0}
+  .contact-name{flex:1;font-size:15px;font-weight:600;color:var(--text)}
+  .contact-phone{font-size:14px;color:var(--accent2);font-weight:600}
+
+  /* ===== DOCS ===== */
+  .docs-section{margin-bottom:24px}
+  .docs-section h3{font-size:13px;font-weight:700;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.7px}
+  .file-list{display:flex;flex-wrap:wrap;gap:10px}
+  .file-chip{display:flex;align-items:center;gap:9px;background:var(--surface2);border:1.5px solid var(--border);border-radius:9px;padding:9px 15px;font-size:13px;color:var(--text)}
+  .file-chip .file-icon{font-size:18px}
+  .file-chip a{color:var(--accent2);text-decoration:none;font-weight:600}.file-chip a:hover{text-decoration:underline}
+  .file-chip .del-file{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;margin-left:2px}
+  .file-chip .del-file:hover{color:var(--red)}
+  .upload-label{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;background:var(--accent-light);border:1.5px dashed var(--border2);border-radius:9px;cursor:pointer;font-size:13px;color:var(--accent2);transition:.2s;font-weight:600}
+  .upload-label:hover{background:var(--accent-mid);border-color:var(--accent)}
+  .upload-label input{display:none}
+
+  /* ===== TEXT CARDS ===== */
+  .text-cards-grid{display:flex;flex-wrap:wrap;gap:16px}
+  .text-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);border:1.5px solid var(--border);padding:20px;min-width:220px;flex:1;max-width:340px;position:relative}
+  .text-card textarea{width:100%;border:none;outline:none;font-family:var(--font);font-size:14px;color:var(--text);resize:none;min-height:90px;background:transparent;line-height:1.65}
+  .text-card .del-card{position:absolute;top:10px;right:10px;background:var(--surface3);border:none;width:24px;height:24px;border-radius:50%;color:var(--text3);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+  .text-card .del-card:hover{background:var(--red-bg);color:var(--red)}
+
+  /* ===== MISC ===== */
+  .empty-state{text-align:center;padding:48px;color:var(--text3);font-size:14px;font-style:italic}
+  .page-subtitle{color:var(--text2);font-size:14px;margin-top:5px;margin-bottom:26px}
+  .section-divider{height:1px;background:var(--border);margin:36px 0}
+  .issues-list{margin-top:10px}
+  .issue-item{background:var(--accent-light);border-radius:9px;padding:10px 14px;margin-bottom:7px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-left:3px solid var(--accent)}
+  .issue-left{flex:1}
+  .issue-name{font-weight:700;color:var(--text);font-size:13px}
+  .issue-meta{font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4}
+</style>
+</head>
+<body>
+
+<!-- PASSWORD OVERLAY -->
+<div id="pw-overlay">
+  <div class="pw-card">
+    <div class="logo-icon">🏥</div>
+    <h1>Цифровой помощник<br>сестры-хозяйки</h1>
+    <div class="pw-subtitle">КДЦ для детей</div>
+    <div class="pw-hint">Введите пароль для доступа</div>
+    <input type="password" id="pw-input" placeholder="Пароль" onkeydown="if(event.key==='Enter')checkPw()">
+    <button onclick="checkPw()">Войти</button>
+    <div class="pw-error" id="pw-error">Неверный пароль. Попробуйте снова.</div>
+  </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay" style="display:none;position:fixed;inset:0;background:rgba(244,247,251,0.92);z-index:9998;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="width:44px;height:44px;border:3px solid var(--accent-mid);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
+  <div style="font-size:14px;color:var(--text2);font-weight:500">Загрузка данных...</div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <span class="logo" onclick="goHome()">
+      <span class="logo-title">🏥 Цифровой помощник сестры-хозяйки</span>
+      <span class="logo-sub">КДЦ для детей</span>
+    </span>
+    <div class="breadcrumb" id="breadcrumb"></div>
+    <button class="back-btn" id="back-btn" onclick="goBack()">← Назад</button>
+  </header>
+
+  <!-- HOME -->
+  <div class="page active" id="page-home">
+    <div class="home-grid">
+      <div class="home-card" onclick="showPage('page-s102')">
+        <div class="home-card-icon">📦</div>
+        <h2>Склад 102</h2>
+        <p>Медицинская одежда, уборка и прочее</p>
+      </div>
+      <div class="home-card" onclick="showPage('page-s202')">
+        <div class="home-card-icon">🗄️</div>
+        <h2>Склад 202</h2>
+        <p>Канцелярия, техника, детский уголок</p>
+      </div>
+      <div class="home-card" onclick="showPage('page-info')">
+        <div class="home-card-icon">📋</div>
+        <h2>Полезная информация</h2>
+        <p>Расписание, контакты, документация</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- СКЛАД 102 -->
+  <div class="page" id="page-s102">
+    <div class="section-header">
+      <h1>Склад 102</h1>
+      <p class="page-subtitle">Выберите раздел для работы</p>
+    </div>
+    <div class="group-grid">
+      <div class="group-card" onclick="showMedClothingPage()">
+        <div class="gc-icon">👔</div>
+        <h3>Медицинская одежда</h3>
+        <p>Халаты, блузы, брюки и др.</p>
+      </div>
+      <div class="group-card" onclick="showPage('page-cleaning')">
+        <div class="gc-icon">🧹</div>
+        <h3>Уборка</h3>
+        <p>Средства и инвентарь</p>
+      </div>
+      <div class="group-card" onclick="showPage('page-other102')">
+        <div class="gc-icon">📁</div>
+        <h3>Прочее</h3>
+        <p>Разные позиции</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- МЕДИЦИНСКАЯ ОДЕЖДА -->
+  <div class="page" id="page-medclothing">
+    <div class="with-sidebar">
+      <div class="sidebar">
+        <div class="sidebar-inner">
+          <h4>Персонал</h4>
+          <a class="sidebar-link active" onclick="showMedGroup('doctors')" id="sl-doctors">👨‍⚕️ Врачебный</a>
+          <a class="sidebar-link" onclick="showMedGroup('nurses')" id="sl-nurses">👩‍⚕️ Средний</a>
+          <a class="sidebar-link" onclick="showMedGroup('juniors')" id="sl-juniors">🧹 Младший</a>
+          <a class="sidebar-link" onclick="showMedGroup('universal')" id="sl-universal">👕 Универсальная</a>
+        </div>
+      </div>
+      <div class="main-content" id="med-content">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- УБОРКА -->
+  <div class="page" id="page-cleaning">
+    <div class="section-header">
+      <h1>Уборка</h1>
+    </div>
+    <div id="cleaning-content"></div>
+  </div>
+
+  <!-- ПРОЧЕЕ 102 -->
+  <div class="page" id="page-other102">
+    <div class="section-header">
+      <h1>Прочее — Склад 102</h1>
+    </div>
+    <div id="other102-content"></div>
+  </div>
+
+  <!-- СКЛАД 202 -->
+  <div class="page" id="page-s202">
+    <div class="with-sidebar">
+      <div class="sidebar">
+        <div class="sidebar-inner">
+          <h4>Разделы</h4>
+          <a class="sidebar-link active" onclick="show202Group('stationery')" id="sl202-stationery">✏️ Канцелярия</a>
+          <a class="sidebar-link" onclick="show202Group('kids')" id="sl202-kids">🎨 Детский уголок</a>
+          <a class="sidebar-link" onclick="show202Group('tech')" id="sl202-tech">💻 Техника</a>
+          <a class="sidebar-link" onclick="show202Group('dispensers')" id="sl202-dispensers">🪣 Диспансеры</a>
+          <a class="sidebar-link" onclick="show202Group('other202')" id="sl202-other202">📦 Прочее</a>
+        </div>
+      </div>
+      <div class="main-content" id="s202-content"></div>
+    </div>
+  </div>
+
+  <!-- ПОЛЕЗНАЯ ИНФОРМАЦИЯ -->
+  <div class="page" id="page-info">
+    <div class="section-header">
+      <h1>Полезная информация</h1>
+    </div>
+    <!-- Schedule -->
+    <div class="cat-section">
+      <div class="cat-section-header">
+        <h2>📅 Расписание</h2>
+      </div>
+      <div class="schedule-grid" id="schedule-grid"></div>
+    </div>
+    <div class="section-divider"></div>
+    <!-- Contacts -->
+    <div class="cat-section">
+      <div class="cat-section-header">
+        <h2>📞 Полезные телефоны</h2>
+        <button class="add-btn" onclick="openAddContact()">+ Добавить контакт</button>
+      </div>
+      <div class="table-wrap" id="contacts-wrap">
+        <div style="padding:16px 18px" id="contacts-list"></div>
+      </div>
+    </div>
+    <div class="section-divider"></div>
+    <!-- Docs -->
+    <div class="cat-section">
+      <div class="cat-section-header">
+        <h2>📂 Документация</h2>
+      </div>
+      <div class="table-wrap" style="padding:20px">
+        <div class="docs-section">
+          <h3>📄 Документация по работе</h3>
+          <div class="file-list" id="files-work"></div>
+          <label class="upload-label" style="margin-top:10px">
+            <span>📎 Загрузить файл</span>
+            <input type="file" multiple accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,image/*" onchange="uploadFile('work',this)">
+          </label>
+        </div>
+        <div class="docs-section" style="margin-top:20px">
+          <h3>🎨 Раскраски для детей</h3>
+          <div class="file-list" id="files-kids"></div>
+          <label class="upload-label" style="margin-top:10px">
+            <span>📎 Загрузить файл</span>
+            <input type="file" multiple accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,image/*" onchange="uploadFile('kids',this)">
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="section-divider"></div>
+    <!-- Text Cards -->
+    <div class="cat-section">
+      <div class="cat-section-header">
+        <h2>📝 Заметки</h2>
+        <button class="add-btn secondary" onclick="addTextCard()">+ Новая карточка</button>
+      </div>
+      <div class="text-cards-grid" id="text-cards"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal-card" id="modal-card">
+    <button class="close-modal" onclick="closeModal()">×</button>
+    <div id="modal-inner"></div>
+  </div>
+</div>
+
+<script>
+// ===== STATE =====
+const state = {
+  medData: {
+    doctors:   {halats:[], bluzes:[], bruki:[]},
+    nurses:    {halats:[], bluzes:[], bruki:[]},
+    juniors:   {halats:[], bluzes:[], bruki:[]},
+    universal: {tshirt_short:[], tshirt_long:[], gilets:[], misc:[]}
+  },
+  cleaning: [],
+  other102: [],
+  s202: {stationery:[], kids:[], tech:[], dispensers:[], other202:[]},
+  schedule: {Mon:[],Tue:[],Wed:[],Thu:[],Fri:[]},
+  contacts: [],
+  files: {work:[], kids:[]},
+  textCards: [],
+  currentMedGroup: 'doctors',
+  current202Group: 'stationery',
+  pageStack: [],
+  currentPage: 'page-home'
+};
+
+// ===== FIREBASE SAVE =====
+let _saveTimeout = null;
+function saveToFirebase(){
+  if(!window._dbReady) return;
+  clearTimeout(_saveTimeout);
+  _saveTimeout = setTimeout(()=>{
+    const data = {
+      medData: state.medData,
+      cleaning: state.cleaning,
+      other102: state.other102,
+      s202: state.s202,
+      schedule: state.schedule,
+      contacts: state.contacts,
+      textCards: state.textCards
+      // files are blob URLs, can't persist to Firestore
+    };
+    const json = JSON.stringify(data);
+    window._lastSaved = json;
+    window._setDoc(window._docRef, data).catch(e=>console.error('Save error:',e));
+  }, 600);
+}
+
+// Expose save function globally so all mutations can call it
+window.saveToFirebase = saveToFirebase;
+
+function refreshAllRendered(){
+  const p = state.currentPage;
+  if(p==='page-info'){ renderSchedule(); renderContacts(); renderTextCards(); }
+  if(p==='page-medclothing') renderMedGroup(state.currentMedGroup);
+  if(p==='page-s202') render202Group(state.current202Group);
+  if(p==='page-cleaning') renderSimpleTable('cleaning-content','cleaning');
+  if(p==='page-other102') renderSimpleTable('other102-content','other102');
+}
+window.refreshAllRendered = refreshAllRendered;
+
+// ===== PASSWORD =====
+function checkPw(){
+  const v = document.getElementById('pw-input').value;
+  if(v === 'Detstvo20'){
+    document.getElementById('pw-overlay').style.display='none';
+    window._appUnlocked = true;
+    if(window._snapshotReady){
+      _finishInit();
+    } else {
+      window._waitingForData = true;
+      document.getElementById('loading-overlay').style.display='flex';
+    }
+  } else {
+    document.getElementById('pw-error').style.display='block';
+    document.getElementById('pw-input').value='';
+    document.getElementById('pw-input').focus();
+  }
+}
+
+function _finishInit(){
+  document.getElementById('loading-overlay').style.display='none';
+  document.getElementById('app').style.display='block';
+  initAll();
+}
+window._finishInit = _finishInit;
+
+function initAll(){
+  renderSchedule();
+  renderContacts();
+  renderFiles();
+  renderTextCards();
+  showPage('page-home',false);
+}
+
+// ===== NAVIGATION =====
+function showPage(id, pushStack=true){
+  if(pushStack && state.currentPage !== id){
+    state.pageStack.push(state.currentPage);
+  }
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  state.currentPage = id;
+  updateNav(id);
+
+  if(id==='page-medclothing') renderMedGroup(state.currentMedGroup);
+  if(id==='page-s202') render202Group(state.current202Group);
+  if(id==='page-cleaning') renderSimpleTable('cleaning-content','cleaning');
+  if(id==='page-other102') renderSimpleTable('other102-content','other102');
+}
+
+function goBack(){
+  if(state.pageStack.length>0){
+    const prev = state.pageStack.pop();
+    showPage(prev, false);
+  } else {
+    goHome();
+  }
+}
+
+function goHome(){
+  state.pageStack = [];
+  showPage('page-home', false);
+}
+
+function updateNav(id){
+  const back = document.getElementById('back-btn');
+  const breadcrumb = document.getElementById('breadcrumb');
+  const crumbs = [];
+  if(id==='page-home'){back.style.display='none'; breadcrumb.innerHTML=''; return;}
+  back.style.display='block';
+
+  const names = {
+    'page-s102':'Склад 102','page-s202':'Склад 202','page-info':'Полезная информация',
+    'page-medclothing':'Медицинская одежда','page-cleaning':'Уборка','page-other102':'Прочее'
+  };
+  crumbs.push('<span onclick="goHome()">Главная</span>');
+  if(['page-medclothing','page-cleaning','page-other102'].includes(id)){
+    crumbs.push('<span class="sep">›</span><span onclick="showPage(\'page-s102\')">Склад 102</span>');
+  }
+  if(names[id]) crumbs.push('<span class="sep">›</span><span>'+names[id]+'</span>');
+  breadcrumb.innerHTML = crumbs.join('');
+}
+
+function showMedClothingPage(){
+  state.pageStack.push(state.currentPage);
+  showPage('page-medclothing',false);
+}
+
+// ===== MEDICAL CLOTHING =====
+const medGroupNames = {
+  doctors:'Врачебный персонал', nurses:'Средний персонал',
+  juniors:'Младший персонал', universal:'Универсальная одежда'
+};
+const medSubKeys = {
+  doctors: ['halats','bluzes','bruki'],
+  nurses:  ['halats','bluzes','bruki'],
+  juniors: ['halats','bluzes','bruki'],
+  universal: ['tshirt_short','tshirt_long','gilets','misc']
+};
+const medSubNames = {
+  halats:'Халаты', bluzes:'Блузы', bruki:'Брюки',
+  tshirt_short:'Футболка (короткий рукав)', tshirt_long:'Футболка (длинный рукав)',
+  gilets:'Жилетки', misc:'Разное'
+};
+
+function showMedGroup(group){
+  state.currentMedGroup = group;
+  document.querySelectorAll('.sidebar-link[id^=sl-]').forEach(l=>l.classList.remove('active'));
+  document.getElementById('sl-'+group).classList.add('active');
+  renderMedGroup(group);
+}
+
+function renderMedIssues(issues, group, sub, itemIdx){
+  if(!issues||!issues.length) return '';
+  let h='<div class="issues-list">';
+  for(let ii=0;ii<issues.length;ii++){
+    const iss=issues[ii];
+    h+='<div class="issue-item">'
+      +'<div class="issue-left">'
+      +'<div class="issue-name">'+iss.fio+'</div>'
+      +'<div class="issue-meta">'+(iss.role||'')+(iss.role?' · ':'')+iss.qty+' шт.'+(iss.comment?' · '+iss.comment:'')+'</div>'
+      +'</div>'
+      +'<div class="tbl-actions">'
+      +'<button class="icon-btn edit" style="width:22px;height:22px;font-size:11px" title="Редактировать выдачу" onclick="openEditMedIssue(\''+group+'\',\''+sub+'\','+itemIdx+','+ii+')">✏️</button>'
+      +'<button class="icon-btn del" style="width:22px;height:22px;font-size:11px" title="Удалить выдачу" onclick="delMedIssue(\''+group+'\',\''+sub+'\','+itemIdx+','+ii+')">🗑</button>'
+      +'</div></div>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function renderMedGroup(group){
+  const cont = document.getElementById('med-content');
+  let html = `<div class="section-header"><h1>${medGroupNames[group]}</h1></div>`;
+  const subs = medSubKeys[group];
+  subs.forEach(sub=>{
+    const items = state.medData[group][sub];
+    html += `<div class="cat-section">
+      <div class="cat-section-header">
+        <h2>${medSubNames[sub]}</h2>
+        <div style="display:flex;gap:8px">
+          <button class="add-btn secondary" onclick="openAddMedItem('${group}','${sub}')">+ Добавить позицию</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Наименование</th><th>Размер</th><th>Итого</th><th>Выдано</th><th>Остаток</th><th>Комментарий</th><th></th></tr></thead>
+          <tbody>`;
+    if(!items.length) html+=`<tr><td colspan="7" class="empty-state">Нет позиций</td></tr>`;
+    items.forEach((item,i)=>{
+      const issued = (item.issues||[]).reduce((s,x)=>s+Number(x.qty),0);
+      const remain = (item.qty||0) - issued;
+      html+=`<tr>
+        <td><strong>${item.name}</strong>
+          ${renderMedIssues(item.issues, group, sub, i)}
+        </td>
+        <td>${item.size||'—'}</td>
+        <td>${item.qty||0}</td>
+        <td>${issued}</td>
+        <td class="remain-col">${remain}</td>
+        <td style="font-size:12px;color:var(--text2)">${item.comment||''}</td>
+        <td><div class="tbl-actions">
+          <button class="icon-btn issue" title="Выдать" onclick="openIssueMed('${group}','${sub}',${i})">📤</button>
+          <button class="icon-btn edit" title="Редактировать" onclick="openEditMedItem('${group}','${sub}',${i})">✏️</button>
+          <button class="icon-btn del" title="Удалить" onclick="delMedItem('${group}','${sub}',${i})">🗑</button>
+        </div></td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div></div>`;
+  });
+  cont.innerHTML = html;
+}
+
+function openAddMedItem(group, sub){
+  openModal(`<h2>Добавить позицию</h2><p>${medGroupNames[group]} · ${medSubNames[sub]}</p>
+    <div class="form-group"><label>Наименование</label><input id="mi-name" placeholder="Название позиции"></div>
+    <div class="form-group"><label>Размер</label><input id="mi-size" placeholder="42, 44, XL..."></div>
+    <div class="form-group"><label>Количество</label><input id="mi-qty" type="number" min="0" placeholder="0"></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="mi-comment" placeholder="Необязательно"></textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="saveMedItem('${group}','${sub}')">Сохранить</button>
+    </div>`);
+}
+
+function saveMedItem(group, sub){
+  const name = document.getElementById('mi-name').value.trim();
+  if(!name) return alert('Введите наименование');
+  state.medData[group][sub].push({
+    name, size: document.getElementById('mi-size').value.trim(),
+    qty: parseInt(document.getElementById('mi-qty').value)||0,
+    comment: document.getElementById('mi-comment').value.trim(),
+    issues:[]
+  });
+  closeModal(); saveToFirebase(); renderMedGroup(group);
+}
+
+function openEditMedItem(group, sub, idx){
+  const it = state.medData[group][sub][idx];
+  openModal(`<h2>Редактировать позицию</h2>
+    <div class="form-group"><label>Наименование</label><input id="mi-name" value="${it.name||''}"></div>
+    <div class="form-group"><label>Размер</label><input id="mi-size" value="${it.size||''}"></div>
+    <div class="form-group"><label>Количество</label><input id="mi-qty" type="number" value="${it.qty||0}"></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="mi-comment">${it.comment||''}</textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="updateMedItem('${group}','${sub}',${idx})">Сохранить</button>
+    </div>`);
+}
+
+function updateMedItem(group, sub, idx){
+  const it = state.medData[group][sub][idx];
+  it.name = document.getElementById('mi-name').value.trim();
+  it.size = document.getElementById('mi-size').value.trim();
+  it.qty = parseInt(document.getElementById('mi-qty').value)||0;
+  it.comment = document.getElementById('mi-comment').value.trim();
+  closeModal(); saveToFirebase(); renderMedGroup(group);
+}
+
+function delMedItem(group, sub, idx){
+  if(confirm('Удалить позицию?')){ state.medData[group][sub].splice(idx,1); saveToFirebase(); renderMedGroup(group); }
+}
+
+function openIssueMed(group, sub, idx){
+  openModal(`<h2>Выдать позицию</h2><p>${state.medData[group][sub][idx].name}</p>
+    <div class="form-group"><label>ФИО</label><input id="is-fio" placeholder="Иванов Иван Иванович"></div>
+    <div class="form-group"><label>Должность</label><input id="is-role" placeholder="Врач, медсестра..."></div>
+    <div class="form-group"><label>Количество</label><input id="is-qty" type="number" min="1" value="1"></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="is-comment" placeholder="Необязательно"></textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="saveMedIssue('${group}','${sub}',${idx})">Выдать</button>
+    </div>`);
+}
+
+function saveMedIssue(group, sub, idx){
+  const fio = document.getElementById('is-fio').value.trim();
+  if(!fio) return alert('Введите ФИО');
+  const qty = parseInt(document.getElementById('is-qty').value)||1;
+  const it = state.medData[group][sub][idx];
+  const issued = (it.issues||[]).reduce((s,x)=>s+Number(x.qty),0);
+  if(issued+qty > it.qty) return alert('Недостаточно остатка!');
+  if(!it.issues) it.issues=[];
+  it.issues.push({fio, role:document.getElementById('is-role').value.trim(), qty, comment:document.getElementById('is-comment').value.trim()});
+  closeModal(); saveToFirebase(); renderMedGroup(group);
+}
+
+function openEditMedIssue(group, sub, itemIdx, issueIdx){
+  const iss = state.medData[group][sub][itemIdx].issues[issueIdx];
+  openModal(`<h2>Редактировать выдачу</h2><p>${state.medData[group][sub][itemIdx].name}</p>
+    <div class="form-group"><label>ФИО</label><input id="is-fio" value="${iss.fio||''}"></div>
+    <div class="form-group"><label>Должность</label><input id="is-role" value="${iss.role||''}"></div>
+    <div class="form-group"><label>Количество</label><input id="is-qty" type="number" min="1" value="${iss.qty||1}"></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="is-comment">${iss.comment||''}</textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="updateMedIssue('${group}','${sub}',${itemIdx},${issueIdx})">Сохранить</button>
+    </div>`);
+}
+
+function updateMedIssue(group, sub, itemIdx, issueIdx){
+  const it = state.medData[group][sub][itemIdx];
+  const newQty = parseInt(document.getElementById('is-qty').value)||1;
+  const otherIssued = (it.issues||[]).reduce((s,x,i)=>i===issueIdx?s:s+Number(x.qty),0);
+  if(otherIssued+newQty > it.qty) return alert('Недостаточно остатка!');
+  it.issues[issueIdx] = {
+    fio: document.getElementById('is-fio').value.trim(),
+    role: document.getElementById('is-role').value.trim(),
+    qty: newQty,
+    comment: document.getElementById('is-comment').value.trim()
+  };
+  closeModal(); saveToFirebase(); renderMedGroup(group);
+}
+
+function delMedIssue(group, sub, itemIdx, issueIdx){
+  if(confirm('Удалить запись о выдаче?')){
+    state.medData[group][sub][itemIdx].issues.splice(issueIdx,1);
+    saveToFirebase(); renderMedGroup(group);
+  }
+}
+
+// ===== SIMPLE TABLE (Cleaning, Other, 202 groups) =====
+function renderSimpleIssues(issues, stateKey, containerId, itemIdx, unit, groupKey){
+  if(!issues||!issues.length) return '';
+  var u = unit||'шт.';
+  var gkArg = groupKey ? ",'"+groupKey+"'" : '';
+  var h='<div class="issues-list">';
+  for(var ii=0;ii<issues.length;ii++){
+    var iss=issues[ii];
+    h+='<div class="issue-item">'
+      +'<div class="issue-left">'
+      +'<div class="issue-name">'+iss.fio+'</div>'
+      +'<div class="issue-meta">'+(iss.role||'')+(iss.role?' · ':'')+iss.qty+' '+u+(iss.comment?' · '+iss.comment:'')+'</div>'
+      +'</div>'
+      +'<div class="tbl-actions">'
+      +'<button class="icon-btn edit" style="width:22px;height:22px;font-size:11px" title="Редактировать выдачу" onclick="openEditSimpleIssue(\''+stateKey+'\',\''+containerId+'\','+itemIdx+','+ii+gkArg+')">✏️</button>'
+      +'<button class="icon-btn del" style="width:22px;height:22px;font-size:11px" title="Удалить выдачу" onclick="delSimpleIssue(\''+stateKey+'\',\''+containerId+'\','+itemIdx+','+ii+gkArg+')">🗑</button>'
+      +'</div></div>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function renderSimpleTable(containerId, stateKey, groupKey){
+  const cont = document.getElementById(containerId);
+  const items = groupKey ? state[stateKey][groupKey] : state[stateKey];
+  const addFn = groupKey ? `openAddSimple('${stateKey}','${containerId}','${groupKey}')` : `openAddSimple('${stateKey}','${containerId}')`;
+  let html = `<div class="cat-section-header" style="margin-bottom:16px">
+    <span></span>
+    <button class="add-btn" onclick="${addFn}">+ Добавить позицию</button>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Наименование</th><th>Ед. изм.</th><th>Итого</th><th>Выдано</th><th>Остаток</th><th>Комментарий</th><th></th></tr></thead>
+    <tbody>`;
+  if(!items.length) html+=`<tr><td colspan="7" class="empty-state">Нет позиций</td></tr>`;
+  items.forEach((item,i)=>{
+    const issued = (item.issues||[]).reduce((s,x)=>s+Number(x.qty),0);
+    const remain = (item.qty||0)-issued;
+    const issuesFn = groupKey ? `openIssueSimple('${stateKey}','${containerId}',${i},'${groupKey}')` : `openIssueSimple('${stateKey}','${containerId}',${i})`;
+    const editFn = groupKey ? `openEditSimple('${stateKey}','${containerId}',${i},'${groupKey}')` : `openEditSimple('${stateKey}','${containerId}',${i})`;
+    const delFn = groupKey ? `delSimple('${stateKey}','${containerId}',${i},'${groupKey}')` : `delSimple('${stateKey}','${containerId}',${i})`;
+    html+=`<tr>
+      <td><strong>${item.name}</strong>
+        ${renderSimpleIssues(item.issues, stateKey, containerId, i, item.unit, groupKey)}
+      </td>
+      <td>${item.unit||'—'}</td>
+      <td>${item.qty||0}</td>
+      <td>${issued}</td>
+      <td class="remain-col">${remain}</td>
+      <td style="font-size:12px;color:var(--text2)">${item.comment||''}</td>
+      <td><div class="tbl-actions">
+        <button class="icon-btn issue" title="Выдать" onclick="${issuesFn}">📤</button>
+        <button class="icon-btn edit" title="Редактировать" onclick="${editFn}">✏️</button>
+        <button class="icon-btn del" title="Удалить" onclick="${delFn}">🗑</button>
+      </div></td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  cont.innerHTML = html;
+}
+
+function getArr(stateKey, groupKey){
+  return groupKey ? state[stateKey][groupKey] : state[stateKey];
+}
+
+function openAddSimple(stateKey, containerId, groupKey){
+  openModal(`<h2>Добавить позицию</h2>
+    <div class="form-group"><label>Наименование</label><input id="si-name" placeholder="Название позиции"></div>
+    <div class="form-group"><label>Количество</label><input id="si-qty" type="number" min="0" placeholder="0"></div>
+    <div class="form-group"><label>Единица измерения</label><input id="si-unit" placeholder="шт., кг, л..."></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="si-comment" placeholder="Необязательно"></textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="saveSimple('${stateKey}','${containerId}'${groupKey?`,'${groupKey}'`:''})">Сохранить</button>
+    </div>`);
+}
+
+function saveSimple(stateKey, containerId, groupKey){
+  const name = document.getElementById('si-name').value.trim();
+  if(!name) return alert('Введите наименование');
+  getArr(stateKey, groupKey).push({
+    name, qty:parseInt(document.getElementById('si-qty').value)||0,
+    unit:document.getElementById('si-unit').value.trim(),
+    comment:document.getElementById('si-comment').value.trim(), issues:[]
+  });
+  closeModal(); saveToFirebase(); renderSimpleTable(containerId, stateKey, groupKey);
+}
+
+function openEditSimple(stateKey, containerId, idx, groupKey){
+  const it = getArr(stateKey, groupKey)[idx];
+  openModal(`<h2>Редактировать позицию</h2>
+    <div class="form-group"><label>Наименование</label><input id="si-name" value="${it.name||''}"></div>
+    <div class="form-group"><label>Количество</label><input id="si-qty" type="number" value="${it.qty||0}"></div>
+    <div class="form-group"><label>Единица измерения</label><input id="si-unit" value="${it.unit||''}"></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="si-comment">${it.comment||''}</textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="updateSimple('${stateKey}','${containerId}',${idx}${groupKey?`,'${groupKey}'`:''})">Сохранить</button>
+    </div>`);
+}
+
+function updateSimple(stateKey, containerId, idx, groupKey){
+  const it = getArr(stateKey, groupKey)[idx];
+  it.name = document.getElementById('si-name').value.trim();
+  it.qty = parseInt(document.getElementById('si-qty').value)||0;
+  it.unit = document.getElementById('si-unit').value.trim();
+  it.comment = document.getElementById('si-comment').value.trim();
+  closeModal(); saveToFirebase(); renderSimpleTable(containerId, stateKey, groupKey);
+}
+
+function delSimple(stateKey, containerId, idx, groupKey){
+  if(confirm('Удалить позицию?')){ getArr(stateKey, groupKey).splice(idx,1); saveToFirebase(); renderSimpleTable(containerId, stateKey, groupKey); }
+}
+
+function openIssueSimple(stateKey, containerId, idx, groupKey){
+  const it = getArr(stateKey, groupKey)[idx];
+  openModal(`<h2>Выдать позицию</h2><p>${it.name}</p>
+    <div class="form-group"><label>ФИО</label><input id="is-fio" placeholder="Иванов Иван Иванович"></div>
+    <div class="form-group"><label>Должность</label><input id="is-role" placeholder="Должность"></div>
+    <div class="form-group"><label>Количество</label><input id="is-qty" type="number" min="1" value="1"></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="is-comment" placeholder="Необязательно"></textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="saveIssueSimple('${stateKey}','${containerId}',${idx}${groupKey?`,'${groupKey}'`:''})">Выдать</button>
+    </div>`);
+}
+
+function saveIssueSimple(stateKey, containerId, idx, groupKey){
+  const fio = document.getElementById('is-fio').value.trim();
+  if(!fio) return alert('Введите ФИО');
+  const qty = parseInt(document.getElementById('is-qty').value)||1;
+  const it = getArr(stateKey, groupKey)[idx];
+  const issued = (it.issues||[]).reduce((s,x)=>s+Number(x.qty),0);
+  if(issued+qty > it.qty) return alert('Недостаточно остатка!');
+  if(!it.issues) it.issues=[];
+  it.issues.push({fio, role:document.getElementById('is-role').value.trim(), qty, comment:document.getElementById('is-comment').value.trim()});
+  closeModal(); saveToFirebase(); renderSimpleTable(containerId, stateKey, groupKey);
+}
+
+// ===== СКЛАД 202 =====
+const group202Names = {
+  stationery:'Канцелярия', kids:'Детский уголок', tech:'Техника',
+  dispensers:'Диспансеры', other202:'Прочее'
+};
+
+function show202Group(group){
+  state.current202Group = group;
+  document.querySelectorAll('.sidebar-link[id^=sl202-]').forEach(l=>l.classList.remove('active'));
+  document.getElementById('sl202-'+group).classList.add('active');
+  render202Group(group);
+}
+
+function render202Group(group){
+  const cont = document.getElementById('s202-content');
+  cont.innerHTML = `<div class="section-header"><h1>${group202Names[group]}</h1></div><div id="s202-inner"></div>`;
+  renderSimpleTable('s202-inner','s202',group);
+}
+
+// override renderSimpleTable for s202 to use inner div
+const _origRST = renderSimpleTable;
+// re-route for 202
+function renderSimpleTable(containerId, stateKey, groupKey){
+  let cont = document.getElementById(containerId);
+  if(!cont) return;
+  const items = groupKey ? state[stateKey][groupKey] : state[stateKey];
+  const addFn = groupKey ? `openAddSimple('${stateKey}','${containerId}','${groupKey}')` : `openAddSimple('${stateKey}','${containerId}')`;
+  let html = `<div class="cat-section-header" style="margin-bottom:16px">
+    <span></span>
+    <button class="add-btn" onclick="${addFn}">+ Добавить позицию</button>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Наименование</th><th>Ед. изм.</th><th>Итого</th><th>Выдано</th><th>Остаток</th><th>Комментарий</th><th></th></tr></thead>
+    <tbody>`;
+  if(!items.length) html+=`<tr><td colspan="7" class="empty-state">Нет позиций</td></tr>`;
+  items.forEach((item,i)=>{
+    const issued=(item.issues||[]).reduce((s,x)=>s+Number(x.qty),0);
+    const remain=(item.qty||0)-issued;
+    const gk = groupKey?`,'${groupKey}'`:'';
+    html+=`<tr>
+      <td><strong>${item.name}</strong>
+        ${renderSimpleIssues(item.issues, stateKey, containerId, i, item.unit, groupKey)}
+      </td>
+      <td>${item.unit||'—'}</td>
+      <td>${item.qty||0}</td>
+      <td>${issued}</td>
+      <td class="remain-col">${remain}</td>
+      <td style="font-size:12px;color:var(--text2)">${item.comment||''}</td>
+      <td><div class="tbl-actions">
+        <button class="icon-btn issue" onclick="openIssueSimple('${stateKey}','${containerId}',${i}${gk})">📤</button>
+        <button class="icon-btn edit" onclick="openEditSimple('${stateKey}','${containerId}',${i}${gk})">✏️</button>
+        <button class="icon-btn del" onclick="delSimple('${stateKey}','${containerId}',${i}${gk})">🗑</button>
+      </div></td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  cont.innerHTML = html;
+}
+
+function openEditSimpleIssue(stateKey, containerId, itemIdx, issueIdx, groupKey){
+  const it = getArr(stateKey, groupKey)[itemIdx];
+  const iss = it.issues[issueIdx];
+  openModal(`<h2>Редактировать выдачу</h2><p>${it.name}</p>
+    <div class="form-group"><label>ФИО</label><input id="is-fio" value="${iss.fio||''}"></div>
+    <div class="form-group"><label>Должность</label><input id="is-role" value="${iss.role||''}"></div>
+    <div class="form-group"><label>Количество</label><input id="is-qty" type="number" min="1" value="${iss.qty||1}"></div>
+    <div class="form-group"><label>Комментарий</label><textarea id="is-comment">${iss.comment||''}</textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="updateSimpleIssue('${stateKey}','${containerId}',${itemIdx},${issueIdx}${groupKey?`,'${groupKey}'`:''})">Сохранить</button>
+    </div>`);
+}
+
+function updateSimpleIssue(stateKey, containerId, itemIdx, issueIdx, groupKey){
+  const it = getArr(stateKey, groupKey)[itemIdx];
+  const newQty = parseInt(document.getElementById('is-qty').value)||1;
+  const otherIssued = (it.issues||[]).reduce((s,x,i)=>i===issueIdx?s:s+Number(x.qty),0);
+  if(otherIssued+newQty > it.qty) return alert('Недостаточно остатка!');
+  it.issues[issueIdx] = {
+    fio: document.getElementById('is-fio').value.trim(),
+    role: document.getElementById('is-role').value.trim(),
+    qty: newQty,
+    comment: document.getElementById('is-comment').value.trim()
+  };
+  closeModal(); saveToFirebase(); renderSimpleTable(containerId, stateKey, groupKey);
+}
+
+function delSimpleIssue(stateKey, containerId, itemIdx, issueIdx, groupKey){
+  if(confirm('Удалить запись о выдаче?')){
+    getArr(stateKey, groupKey)[itemIdx].issues.splice(issueIdx,1);
+    saveToFirebase(); renderSimpleTable(containerId, stateKey, groupKey);
+  }
+}
+
+// ===== SCHEDULE =====
+const days = [{key:'Mon',label:'Понедельник'},{key:'Tue',label:'Вторник'},{key:'Wed',label:'Среда'},{key:'Thu',label:'Четверг'},{key:'Fri',label:'Пятница'}];
+
+function renderSchedule(){
+  const grid = document.getElementById('schedule-grid');
+  let html = '';
+  days.forEach(d=>{
+    const tasks = state.schedule[d.key];
+    html+=`<div class="day-col">
+      <div class="day-col-header">${d.label}</div>
+      <div class="day-tasks">
+        ${tasks.map((t,i)=>`<div class="task-item">
+          <span class="task-text">${t}</span>
+          <div class="task-actions">
+            <button class="icon-btn edit" onclick="editTask('${d.key}',${i})" style="width:22px;height:22px;font-size:12px">✏️</button>
+            <button class="icon-btn del" onclick="delTask('${d.key}',${i})" style="width:22px;height:22px;font-size:12px">×</button>
+          </div>
+        </div>`).join('')}
+        <button class="add-task-btn" onclick="addTask('${d.key}')">+ задача</button>
+      </div>
+    </div>`;
+  });
+  grid.innerHTML = html;
+}
+
+function addTask(day){
+  openModal(`<h2>Добавить задачу</h2><p>${days.find(d=>d.key===day).label}</p>
+    <div class="form-group"><label>Задача</label><textarea id="task-text" rows="3" placeholder="Описание задачи"></textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="saveTask('${day}')">Добавить</button>
+    </div>`);
+}
+
+function saveTask(day){
+  const t = document.getElementById('task-text').value.trim();
+  if(!t) return;
+  state.schedule[day].push(t);
+  closeModal(); saveToFirebase(); renderSchedule();
+}
+
+function editTask(day, idx){
+  openModal(`<h2>Редактировать задачу</h2>
+    <div class="form-group"><label>Задача</label><textarea id="task-text" rows="3">${state.schedule[day][idx]}</textarea></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="updateTask('${day}',${idx})">Сохранить</button>
+    </div>`);
+}
+
+function updateTask(day, idx){
+  const t = document.getElementById('task-text').value.trim();
+  if(!t) return;
+  state.schedule[day][idx] = t;
+  closeModal(); saveToFirebase(); renderSchedule();
+}
+
+function delTask(day, idx){
+  state.schedule[day].splice(idx,1); saveToFirebase(); renderSchedule();
+}
+
+// ===== CONTACTS =====
+function renderContacts(){
+  const list = document.getElementById('contacts-list');
+  if(!state.contacts.length){
+    list.innerHTML='<div class="empty-state">Нет контактов</div>'; return;
+  }
+  list.innerHTML = state.contacts.map((c,i)=>`
+    <div class="contact-item">
+      <div class="contact-avatar">${c.name.charAt(0).toUpperCase()}</div>
+      <span class="contact-name">${c.name}</span>
+      <span class="contact-phone">${c.phone}</span>
+      <div class="tbl-actions" style="margin-left:12px">
+        <button class="icon-btn edit" onclick="editContact(${i})">✏️</button>
+        <button class="icon-btn del" onclick="delContact(${i})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function openAddContact(){
+  openModal(`<h2>Добавить контакт</h2>
+    <div class="form-group"><label>Наименование абонента</label><input id="ct-name" placeholder="Название или ФИО"></div>
+    <div class="form-group"><label>Номер телефона</label><input id="ct-phone" placeholder="+7 (000) 000-00-00"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="saveContact()">Сохранить</button>
+    </div>`);
+}
+
+function saveContact(){
+  const name = document.getElementById('ct-name').value.trim();
+  const phone = document.getElementById('ct-phone').value.trim();
+  if(!name||!phone) return alert('Заполните все поля');
+  state.contacts.push({name,phone});
+  closeModal(); saveToFirebase(); renderContacts();
+}
+
+function editContact(idx){
+  const c = state.contacts[idx];
+  openModal(`<h2>Редактировать контакт</h2>
+    <div class="form-group"><label>Наименование</label><input id="ct-name" value="${c.name}"></div>
+    <div class="form-group"><label>Номер</label><input id="ct-phone" value="${c.phone}"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Отмена</button>
+      <button class="modal-submit" onclick="updateContact(${idx})">Сохранить</button>
+    </div>`);
+}
+
+function updateContact(idx){
+  state.contacts[idx].name = document.getElementById('ct-name').value.trim();
+  state.contacts[idx].phone = document.getElementById('ct-phone').value.trim();
+  closeModal(); saveToFirebase(); renderContacts();
+}
+
+function delContact(idx){
+  if(confirm('Удалить контакт?')){ state.contacts.splice(idx,1); saveToFirebase(); renderContacts(); }
+}
+
+// ===== FILES =====
+function renderFiles(){
+  ['work','kids'].forEach(cat=>{
+    const list = document.getElementById('files-'+cat);
+    if(!list) return;
+    const files = state.files[cat];
+    list.innerHTML = files.length ? files.map((f,i)=>`
+      <div class="file-chip">
+        <span class="file-icon">${getFileIcon(f.name)}</span>
+        <a href="${f.url}" download="${f.name}">${f.name}</a>
+        <button class="del-file" onclick="delFile('${cat}',${i})">×</button>
+      </div>`).join('') : '';
+  });
+}
+
+function getFileIcon(name){
+  const ext = name.split('.').pop().toLowerCase();
+  if(['doc','docx'].includes(ext)) return '📝';
+  if(['xls','xlsx'].includes(ext)) return '📊';
+  if(['ppt','pptx'].includes(ext)) return '📑';
+  if(ext==='pdf') return '📄';
+  if(['png','jpg','jpeg','gif','webp'].includes(ext)) return '🖼️';
+  return '📎';
+}
+
+function uploadFile(cat, input){
+  const files = Array.from(input.files);
+  files.forEach(file=>{
+    const url = URL.createObjectURL(file);
+    state.files[cat].push({name:file.name, url});
+  });
+  input.value='';
+  renderFiles();
+}
+
+function delFile(cat, idx){
+  state.files[cat].splice(idx,1); renderFiles();
+}
+
+// ===== TEXT CARDS =====
+function renderTextCards(){
+  const grid = document.getElementById('text-cards');
+  grid.innerHTML = state.textCards.map((c,i)=>`
+    <div class="text-card">
+      <button class="del-card" onclick="delTextCard(${i})">×</button>
+      <textarea onchange="state.textCards[${i}]=this.value;saveToFirebase()" placeholder="Введите текст...">${c}</textarea>
+    </div>`).join('');
+}
+
+function addTextCard(){
+  state.textCards.push('');
+  saveToFirebase(); renderTextCards();
+  setTimeout(()=>{
+    const tas = document.querySelectorAll('.text-card textarea');
+    if(tas.length) tas[tas.length-1].focus();
+  },50);
+}
+
+function delTextCard(idx){
+  state.textCards.splice(idx,1); saveToFirebase(); renderTextCards();
+}
+
+// ===== MODAL =====
+function openModal(html){
+  document.getElementById('modal-inner').innerHTML = html;
+  document.getElementById('modal-bg').classList.add('open');
+  setTimeout(()=>{
+    const first = document.querySelector('#modal-inner input, #modal-inner textarea');
+    if(first) first.focus();
+  },100);
+}
+
+function closeModal(){
+  document.getElementById('modal-bg').classList.remove('open');
+}
+
+document.getElementById('modal-bg').addEventListener('click',function(e){
+  if(e.target===this) closeModal();
+});
+</script>
+</body>
+</html>
