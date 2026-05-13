@@ -8,11 +8,12 @@
 <!-- Firebase -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDMktzHqC_3BJ9tHgvFYYf31njugCNzUHE",
   authDomain: "helper-70109.firebaseapp.com",
+  databaseURL: "https://helper-70109-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "helper-70109",
   storageBucket: "helper-70109.firebasestorage.app",
   messagingSenderId: "706460274298",
@@ -20,23 +21,21 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const DOC_REF = doc(db, "app_data", "main");
+const db = getDatabase(app);
+const dataRef = ref(db, 'app_data');
 
-// Expose to global scope for use in non-module script
-window._db = db;
-window._docRef = DOC_REF;
-window._setDoc = setDoc;
-window._onSnapshot = onSnapshot;
+// Expose to global scope
 window._dbReady = true;
+window._saveData = function(data) {
+  set(dataRef, data).catch(e => console.error('Save error:', e));
+};
 
-// Start listening for real-time updates
-onSnapshot(DOC_REF, (snap) => {
-  if (snap.exists()) {
-    const data = snap.data();
-    // Only update if data differs (avoid re-render loop from our own saves)
-    if (JSON.stringify(data) !== window._lastSaved) {
-      // Merge into state, keeping navigation state
+// Listen for real-time updates
+onValue(dataRef, (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    const json = JSON.stringify(data);
+    if (json !== window._lastSaved) {
       const nav = {
         currentMedGroup: window.state.currentMedGroup,
         current202Group: window.state.current202Group,
@@ -44,13 +43,12 @@ onSnapshot(DOC_REF, (snap) => {
         currentPage: window.state.currentPage
       };
       Object.assign(window.state, data, nav);
-      window._lastSaved = JSON.stringify(data);
+      window._lastSaved = json;
       if (window._appUnlocked) window.refreshAllRendered();
     }
   }
   if (!window._snapshotReady) {
     window._snapshotReady = true;
-    // If app is already waiting for data (user already logged in)
     if (window._waitingForData) window._finishInit();
   }
 });
@@ -471,11 +469,10 @@ function saveToFirebase(){
       schedule: state.schedule,
       contacts: state.contacts,
       textCards: state.textCards
-      // files are blob URLs, can't persist to Firestore
     };
     const json = JSON.stringify(data);
     window._lastSaved = json;
-    window._setDoc(window._docRef, data).catch(e=>console.error('Save error:',e));
+    window._saveData(data);
   }, 600);
 }
 
