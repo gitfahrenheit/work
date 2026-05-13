@@ -33,7 +33,7 @@ window._saveData = function(data) {
 // Listen for real-time updates
 onValue(dataRef, (snapshot) => {
   const data = snapshot.val();
-  if (data) {
+  if (data && window.state) {
     const json = JSON.stringify(data);
     if (json !== window._lastSaved) {
       const nav = {
@@ -49,7 +49,6 @@ onValue(dataRef, (snapshot) => {
   }
   if (!window._snapshotReady) {
     window._snapshotReady = true;
-    // Данные уже загружены — если пользователь уже ввёл пароль, открываем сразу
     if (window._waitingForData) {
       window._waitingForData = false;
       window._finishInit();
@@ -439,7 +438,7 @@ onValue(dataRef, (snapshot) => {
 
 <script>
 // ===== STATE =====
-const state = {
+window.state = {
   medData: {
     doctors:   {halats:[], bluzes:[], bruki:[]},
     nurses:    {halats:[], bluzes:[], bruki:[]},
@@ -458,6 +457,7 @@ const state = {
   pageStack: [],
   currentPage: 'page-home'
 };
+const state = window.state;
 
 // ===== FIREBASE SAVE =====
 let _saveTimeout = null;
